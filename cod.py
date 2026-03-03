@@ -10,6 +10,8 @@ from typing import List, Tuple, Optional
 import functools
 from cachetools import TTLCache
 from flask import Flask, jsonify
+import multiprocessing
+import time
 
 # Явно указываем путь к файлу .env
 env_path = Path(__file__).parent / '.env'
@@ -1206,34 +1208,48 @@ def add_initial_products():
 # ============================================
 # === ЗАПУСК БОТА ===
 # ============================================
-async def start_bot_polling():
-    """Запускает поллинг бота в асинхронном режиме."""
-    try:
-        print("🚀 Бот начинает polling...")
-        # Инициализация БД перед запуском
-        init_db()
-        add_initial_products()
-        print(f"🤖 Бот запущен! Админ ID: {ADMIN_ID}")
-        print(f"📦 Товаров на странице: {ITEMS_PER_PAGE}")
-        print(f"💬 Чат для заказов: {ORDERS_CHAT_ID}")
-        await dp.start_polling(bot)
-    except Exception as e:
-        print(f"❌ Бот остановлен с ошибкой: {e}")
 
-def run_bot():
-    """Запускает асинхронную функцию бота в отдельном потоке."""
-    asyncio.run(start_bot_polling())
 
-# Запускаем бота в фоновом потоке
-bot_thread = threading.Thread(target=run_bot, daemon=True)
-bot_thread.start()
-print("✅ Бот запущен в фоновом потоке")
+
+
+def run_bot_process():
+    """Запускает бота в отдельном процессе"""
+    # Создаем новый цикл событий для процесса
+
+    from aiogram import Bot, Dispatcher
+
+    # Перенаправляем вывод, чтобы видеть логи
+    import sys
+    import logging
+    logging.basicConfig(level=logging.INFO, stream=sys.stdout)
+
+    async def start_bot():
+        try:
+            print("🚀 Бот процесс запущен, инициализация...")
+
+            # Инициализация БД
+            init_db()
+            add_initial_products()
+
+            print(f"🤖 Бот готов! Админ ID: {ADMIN_ID}")
+            print(f"📦 Товаров на странице: {ITEMS_PER_PAGE}")
+
+            # Запускаем поллинг
+            await dp.start_polling(bot)
+        except Exception as e:
+            print(f"❌ Бот процесс остановлен с ошибкой: {e}")
+
+    # Запускаем асинхронную функцию
+    asyncio.run(start_bot())
+
+
+# Запускаем бота в отдельном процессе
+bot_process = multiprocessing.Process(target=run_bot_process, daemon=True)
+bot_process.start()
+print(f"✅ Бот запущен в отдельном процессе (PID: {bot_process.pid})")
 
 # ============================================
-# === ВАЖНО: НИЧЕГО НЕ ЗАПУСКАЕМ ЗДЕСЬ ===
-# Gunicorn сам запустит Flask приложение через 'gunicorn cod:flask_app'
-# Не добавляйте flask_app.run() или другие запуски!
+# === FLASK ЗАПУСКАЕТСЯ GUNICORN ===
 # ============================================
-
-print("🚀 Ожидание запросов от Gunicorn...")
-print("✅ Flask приложение готово к работе через Gunicorn")
+print("🚀 Flask приложение готово к работе через Gunicorn")
+print("✅ Конфигурация загружена успешно!")
