@@ -1,6 +1,4 @@
-import asyncio
 import logging
-import os
 from pathlib import Path
 from dotenv import load_dotenv
 
@@ -34,6 +32,35 @@ def get_env_var(var_name: str, var_type=str, required=True):
 
     return value
 
+import asyncio
+import threading
+import os
+
+# Функция для запуска бота
+async def start_bot_polling():
+    """Запускает поллинг бота в асинхронном режиме."""
+    try:
+        print("🚀 Бот начинает polling...")
+        await dp.start_polling(bot)
+    except Exception as e:
+        print(f"❌ Бот остановлен с ошибкой: {e}")
+
+def run_bot():
+    """Запускает асинхронную функцию бота в отдельном потоке."""
+    asyncio.run(start_bot_polling())
+
+# Запускаем бота в фоновом потоке (daemon=True позволяет потоку завершиться вместе с основным)
+bot_thread = threading.Thread(target=run_bot, daemon=True)
+bot_thread.start()
+print("✅ Бот запущен в фоновом потоке")
+
+# !!! ВАЖНО: НЕ ЗАПУСКАЕМ flask_app.run() ЗДЕСЬ !!!
+# Gunicorn, который запускает Render командой `gunicorn cod:flask_app`,
+# сам запустит Flask-приложение и будет слушать порт 10000.
+# Нам нужно только определить само приложение (flask_app) выше в коде.
+
+print("🚀 Ожидание запросов от Gunicorn...")
+# ============================================
 
 # Импорты aiogram и других библиотек
 from aiogram import Bot, Dispatcher, types, F
@@ -47,7 +74,6 @@ from datetime import datetime
 from typing import List, Tuple, Optional
 import functools
 from cachetools import TTLCache
-import threading
 from flask import Flask, jsonify
 import os
 
@@ -425,27 +451,7 @@ def get_statistics() -> dict:
         stats['popular_products'] = cursor.fetchall()
 
         return stats
-bot = Bot(token=BOT_TOKEN)
-storage = MemoryStorage()
-dp = Dispatcher(storage=storage)
-async def start_bot_polling():
-    try:
-        await dp.start_polling(bot)
-    except Exception as e:
-        print(f"Бот остановлен с ошибкой: {e}")
 
-def run_bot_in_thread():
-    asyncio.run(start_bot_polling())
-
-bot_thread = threading.Thread(target=run_bot_in_thread, daemon=True)
-bot_thread.start()
-print("✅ Бот запущен в фоновом потоке")
-
-# 7. ВСЕ ОБРАБОТЧИКИ (должны идти после создания dp)
-@dp.message(Command("start"))
-async def start_command(message: types.Message):
-    # ...
-    pass
 
 # Клавиатуры
 # Клавиатуры - ИСПРАВЛЕНО ДЛЯ aiogram 3.x
