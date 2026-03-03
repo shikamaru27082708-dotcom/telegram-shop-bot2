@@ -51,6 +51,9 @@ import threading
 from flask import Flask, jsonify
 import os
 
+
+
+
 # Flask сервер для поддержания активности на Render
 flask_app = Flask(__name__)
 
@@ -422,7 +425,27 @@ def get_statistics() -> dict:
         stats['popular_products'] = cursor.fetchall()
 
         return stats
+bot = Bot(token=BOT_TOKEN)
+storage = MemoryStorage()
+dp = Dispatcher(storage=storage)
+async def start_bot_polling():
+    try:
+        await dp.start_polling(bot)
+    except Exception as e:
+        print(f"Бот остановлен с ошибкой: {e}")
 
+def run_bot_in_thread():
+    asyncio.run(start_bot_polling())
+
+bot_thread = threading.Thread(target=run_bot_in_thread, daemon=True)
+bot_thread.start()
+print("✅ Бот запущен в фоновом потоке")
+
+# 7. ВСЕ ОБРАБОТЧИКИ (должны идти после создания dp)
+@dp.message(Command("start"))
+async def start_command(message: types.Message):
+    # ...
+    pass
 
 # Клавиатуры
 # Клавиатуры - ИСПРАВЛЕНО ДЛЯ aiogram 3.x
@@ -1298,25 +1321,3 @@ async def main():
 
 
 # В самом конце файла cod.py, после всех обработчиков
-if __name__ == "__main__":
-    import os
-    import threading
-
-
-    # Функция для запуска бота
-    async def start_bot():
-        await dp.start_polling(bot)
-
-
-    # Запускаем бота в отдельном потоке
-    def run_bot():
-        asyncio.run(start_bot())
-
-
-    bot_thread = threading.Thread(target=run_bot, daemon=True)
-    bot_thread.start()
-
-    # Запускаем Flask сервер, который будет слушать порт
-    port = int(os.environ.get('PORT', 10000))
-    print(f"🚀 Starting Flask server on port {port}...")
-    flask_app.run(host='0.0.0.0', port=port)
