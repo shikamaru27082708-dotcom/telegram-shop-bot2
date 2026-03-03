@@ -1,3 +1,9 @@
+# Большие файлы установщиков
+*.exe
+*.msi
+*.zip
+*.rar
+
 # Виртуальное окружение
 .venv/
 venv/
@@ -14,9 +20,3 @@ env/
 # Кэш Python
 __pycache__/
 *.pyc
-.pytest_cache/
-
-# IDE
-.idea/
-.vscode/
-*.swp
