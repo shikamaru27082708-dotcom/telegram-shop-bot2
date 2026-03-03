@@ -1212,41 +1212,63 @@ def add_initial_products():
 
 
 
-def run_bot_process():
-    """Запускает бота в отдельном процессе"""
-    # Создаем новый цикл событий для процесса
+# ============================================
+# === ЗАПУСК БОТА ЧЕРЕЗ ВЕБХУКИ (ДЛЯ RENDER) ===
+# ============================================
+import aiohttp
+from aiogram.webhook.aiohttp_server import SimpleRequestHandler, setup_application
+from aiohttp import web
+import os
 
-    from aiogram import Bot, Dispatcher
+# Функция для установки вебхука при запуске
+async def on_startup(app: web.Application):
+    # Удаляем предыдущий вебхук, если был
+    await bot.delete_webhook()
+    # Устанавливаем новый вебхук, указывая URL вашего сервиса на Render
+    webhook_url = f"https://telegram-shop-bot2.onrender.com/webhook"
+    await bot.set_webhook(
+        url=webhook_url,
+        allowed_updates=["message", "callback_query"],
+        drop_pending_updates=True
+    )
+    print(f"✅ Вебхук установлен на {webhook_url}")
 
-    # Перенаправляем вывод, чтобы видеть логи
-    import sys
-    import logging
-    logging.basicConfig(level=logging.INFO, stream=sys.stdout)
+# Функция при завершении
+async def on_shutdown(app: web.Application):
+    print("🔄 Удаляем вебхук...")
+    await bot.delete_webhook()
+    await bot.session.close()
 
-    async def start_bot():
-        try:
-            print("🚀 Бот процесс запущен, инициализация...")
+# Создаем aiohttp приложение
+app = web.Application()
 
-            # Инициализация БД
-            init_db()
-            add_initial_products()
+# Регистрируем обработчики вебхука
+webhook_requests_handler = SimpleRequestHandler(
+    dispatcher=dp,
+    bot=bot,
+)
+webhook_requests_handler.register(app, path="/webhook")
 
-            print(f"🤖 Бот готов! Админ ID: {ADMIN_ID}")
-            print(f"📦 Товаров на странице: {ITEMS_PER_PAGE}")
+# Настраиваем startup/shutdown
+app.on_startup.append(on_startup)
+app.on_shutdown.append(on_shutdown)
 
-            # Запускаем поллинг
-            await dp.start_polling(bot)
-        except Exception as e:
-            print(f"❌ Бот процесс остановлен с ошибкой: {e}")
+# Точка входа для Gunicorn
+if __name__ == "__main__":
+    # Этот блок не выполнится при запуске через Gunicorn
+    pass
+else:
+    # При запуске через Gunicorn просто создаем экземпляр app
+    # Инициализируем базу данных (один раз)
+    init_db()
+    add_initial_products()
+    print("✅ База данных инициализирована")
+    print("🚀 Бот готов к работе через вебхуки")
 
-    # Запускаем асинхронную функцию
-    asyncio.run(start_bot())
-
-
-# Запускаем бота в отдельном процессе
-bot_process = multiprocessing.Process(target=run_bot_process, daemon=True)
-bot_process.start()
-print(f"✅ Бот запущен в отдельном процессе (PID: {bot_process.pid})")
+# ============================================
+# === FLASK ПРИЛОЖЕНИЕ (оставляем для health check) ===
+# ============================================
+# ... (ваш существующий код Flask) ...
 
 # ============================================
 # === FLASK ЗАПУСКАЕТСЯ GUNICORN ===
