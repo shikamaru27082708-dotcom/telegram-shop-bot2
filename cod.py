@@ -1297,10 +1297,26 @@ async def main():
     await dp.start_polling(bot)
 
 
-if __name__ == '__main__':
-    try:
-        asyncio.run(main())
-    except KeyboardInterrupt:
-        print("\n👋 Бот остановлен")
-    except Exception as e:
-        print(f"❌ Ошибка: {e}")
+# В самом конце файла cod.py, после всех обработчиков
+if __name__ == "__main__":
+    import os
+    import threading
+
+
+    # Функция для запуска бота
+    async def start_bot():
+        await dp.start_polling(bot)
+
+
+    # Запускаем бота в отдельном потоке
+    def run_bot():
+        asyncio.run(start_bot())
+
+
+    bot_thread = threading.Thread(target=run_bot, daemon=True)
+    bot_thread.start()
+
+    # Запускаем Flask сервер, который будет слушать порт
+    port = int(os.environ.get('PORT', 10000))
+    print(f"🚀 Starting Flask server on port {port}...")
+    flask_app.run(host='0.0.0.0', port=port)
