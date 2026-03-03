@@ -1,6 +1,15 @@
 import logging
 from pathlib import Path
 from dotenv import load_dotenv
+import os
+import asyncio
+import threading
+import sqlite3
+from datetime import datetime
+from typing import List, Tuple, Optional
+import functools
+from cachetools import TTLCache
+from flask import Flask, jsonify
 
 # Явно указываем путь к файлу .env
 env_path = Path(__file__).parent / '.env'
@@ -13,7 +22,6 @@ def get_env_var(var_name: str, var_type=str, required=True):
     value = os.getenv(var_name)
 
     if required and value is None:
-        # Подробное сообщение об ошибке
         current_dir = Path.cwd()
         env_exists = Path('.env').exists()
         raise ValueError(
@@ -32,75 +40,15 @@ def get_env_var(var_name: str, var_type=str, required=True):
 
     return value
 
-import asyncio
-import threading
-import os
 
-# Функция для запуска бота
-async def start_bot_polling():
-    """Запускает поллинг бота в асинхронном режиме."""
-    try:
-        print("🚀 Бот начинает polling...")
-        await dp.start_polling(bot)
-    except Exception as e:
-        print(f"❌ Бот остановлен с ошибкой: {e}")
-
-def run_bot():
-    """Запускает асинхронную функцию бота в отдельном потоке."""
-    asyncio.run(start_bot_polling())
-
-# Запускаем бота в фоновом потоке (daemon=True позволяет потоку завершиться вместе с основным)
-bot_thread = threading.Thread(target=run_bot, daemon=True)
-bot_thread.start()
-print("✅ Бот запущен в фоновом потоке")
-
-# !!! ВАЖНО: НЕ ЗАПУСКАЕМ flask_app.run() ЗДЕСЬ !!!
-# Gunicorn, который запускает Render командой `gunicorn cod:flask_app`,
-# сам запустит Flask-приложение и будет слушать порт 10000.
-# Нам нужно только определить само приложение (flask_app) выше в коде.
-
-print("🚀 Ожидание запросов от Gunicorn...")
-# ============================================
-
-# Импорты aiogram и других библиотек
+# Импорты aiogram (должны быть после get_env_var, но до создания бота)
 from aiogram import Bot, Dispatcher, types, F
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, ReplyKeyboardMarkup, KeyboardButton
-import sqlite3
-from datetime import datetime
-from typing import List, Tuple, Optional
-import functools
-from cachetools import TTLCache
-from flask import Flask, jsonify
-import os
-
-
-
-
-# Flask сервер для поддержания активности на Render
-flask_app = Flask(__name__)
-
-@flask_app.route('/')
-def home():
-    return jsonify({
-        "status": "running",
-        "bot": "Telegram Shop Bot",
-        "message": "Бот работает"
-    })
-
-@flask_app.route('/health')
-def health():
-    return jsonify({"status": "healthy"}), 200
-
-def run_flask():
-    port = int(os.environ.get('PORT', 10000))
-    flask_app.run(host='0.0.0.0', port=port)
-
-# Запускаем Flask в отдельном потоке
-threading.Thread(target=run_flask, daemon=True).start()
+from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 # Настройка логирования
 logging.basicConfig(level=logging.INFO)
@@ -117,7 +65,23 @@ CACHE_TTL = 300
 # Инициализация кэша
 cache = TTLCache(maxsize=100, ttl=CACHE_TTL)
 
-# Инициализация бота
+# === СОЗДАЕМ FLASK ПРИЛОЖЕНИЕ ===
+flask_app = Flask(__name__)
+
+@flask_app.route('/')
+def home():
+    return jsonify({
+        "status": "running",
+        "bot": "Telegram Shop Bot",
+        "message": "Бот работает"
+    })
+
+@flask_app.route('/health')
+def health():
+    return jsonify({"status": "healthy"}), 200
+# ================================
+
+# === СОЗДАЕМ БОТА И ДИСПЕТЧЕРА ===
 bot = Bot(token=BOT_TOKEN)
 storage = MemoryStorage()
 dp = Dispatcher(storage=storage)
@@ -125,6 +89,7 @@ dp = Dispatcher(storage=storage)
 print("✅ Конфигурация загружена успешно!")
 print(f"ADMIN_ID: {ADMIN_ID}")
 print(f"ORDERS_CHAT_ID: {ORDERS_CHAT_ID}")
+# =================================
 
 
 # Состояния
@@ -454,7 +419,6 @@ def get_statistics() -> dict:
 
 
 # Клавиатуры
-# Клавиатуры - ИСПРАВЛЕНО ДЛЯ aiogram 3.x
 def get_main_keyboard() -> ReplyKeyboardMarkup:
     return ReplyKeyboardMarkup(
         keyboard=[
@@ -481,8 +445,6 @@ def get_admin_keyboard() -> ReplyKeyboardMarkup:
 
 
 def get_categories_inline_keyboard():
-    from aiogram.utils.keyboard import InlineKeyboardBuilder
-
     categories = get_all_categories()
     builder = InlineKeyboardBuilder()
 
@@ -497,8 +459,6 @@ def get_categories_inline_keyboard():
 
 
 def get_products_inline_keyboard(products: List[Tuple], category_id: int, page: int, total_pages: int):
-    from aiogram.utils.keyboard import InlineKeyboardBuilder
-
     builder = InlineKeyboardBuilder()
 
     for product in products:
@@ -529,8 +489,6 @@ def get_products_inline_keyboard(products: List[Tuple], category_id: int, page: 
 
 
 def get_product_detail_keyboard(product_id: int) -> InlineKeyboardMarkup:
-    from aiogram.utils.keyboard import InlineKeyboardBuilder
-
     builder = InlineKeyboardBuilder()
     builder.row(
         InlineKeyboardButton(text="🛒 Добавить в корзину", callback_data=f"add_{product_id}"),
@@ -540,8 +498,6 @@ def get_product_detail_keyboard(product_id: int) -> InlineKeyboardMarkup:
 
 
 def get_cart_inline_keyboard(cart_items: List[Tuple]):
-    from aiogram.utils.keyboard import InlineKeyboardBuilder
-
     builder = InlineKeyboardBuilder()
 
     for item in cart_items:
@@ -576,7 +532,11 @@ def format_cart_text(cart_items: List[Tuple]) -> str:
     text += f"\n💰 Итого: {total}₽"
     return text
 
-# Обработчики команд
+
+# ============================================
+# === ВСЕ ОБРАБОТЧИКИ БОТА ===
+# ============================================
+
 @dp.message(Command("start"))
 async def start_command(message: types.Message):
     if message.from_user.id == ADMIN_ID:
@@ -591,7 +551,6 @@ async def start_command(message: types.Message):
         )
 
 
-# Каталог
 @dp.message(F.text == "🛍 Каталог")
 async def show_catalog(message: types.Message):
     await message.answer(
@@ -626,14 +585,10 @@ async def process_category(callback: types.CallbackQuery):
         new_text = f"{emoji} {name} (стр. {page}/{total_pages}):"
         new_keyboard = get_products_inline_keyboard(products, category_id, page, total_pages)
 
-        # Проверяем, изменилось ли сообщение
         if callback.message.text != new_text or callback.message.reply_markup != new_keyboard:
-            await callback.message.edit_text(
-                new_text,
-                reply_markup=new_keyboard
-            )
+            await callback.message.edit_text(new_text, reply_markup=new_keyboard)
         else:
-            await callback.answer()  # Просто отвечаем, ничего не меняя
+            await callback.answer()
 
     except Exception as e:
         print(f"Ошибка: {e}")
@@ -641,7 +596,6 @@ async def process_category(callback: types.CallbackQuery):
     await callback.answer()
 
 
-# Просмотр товара
 @dp.callback_query(F.data.startswith("prod_"))
 async def process_product(callback: types.CallbackQuery):
     try:
@@ -683,105 +637,64 @@ async def show_cart(event: types.Message | types.CallbackQuery):
     text = "🛒 Ваша корзина пуста" if not cart_items else format_cart_text(cart_items)
 
     if isinstance(event, types.CallbackQuery):
-        # Для callback запросов
         if cart_items:
             new_keyboard = get_cart_inline_keyboard(cart_items)
-
-            # Проверяем тип сообщения
-            if event.message.text:
-                # Текстовое сообщение
-                if event.message.text != text or event.message.reply_markup != new_keyboard:
-                    await event.message.edit_text(text, reply_markup=new_keyboard)
-                else:
-                    await event.answer()
-            elif event.message.caption:
-                # Сообщение с подписью
-                if event.message.caption != text or event.message.reply_markup != new_keyboard:
-                    await event.message.edit_caption(caption=text, reply_markup=new_keyboard)
-                else:
-                    await event.answer()
+            if event.message.text != text or event.message.reply_markup != new_keyboard:
+                await event.message.edit_text(text, reply_markup=new_keyboard)
             else:
-                # Другой тип сообщения
-                await event.message.delete()
-                await event.message.answer(text, reply_markup=new_keyboard)
+                await event.answer()
         else:
-            # Корзина пуста
-            if event.message.text:
-                if event.message.text != text:
-                    await event.message.edit_text(text)
-                else:
-                    await event.answer()
-            elif event.message.caption:
-                if event.message.caption != text:
-                    await event.message.edit_caption(caption=text)
-                    if event.message.reply_markup:
-                        await event.message.edit_reply_markup(reply_markup=None)
-                else:
-                    await event.answer()
+            if event.message.text != text:
+                await event.message.edit_text(text)
             else:
-                await event.message.delete()
-                await event.message.answer(text)
+                await event.answer()
         await event.answer()
     else:
-        # Для обычных сообщений
         if cart_items:
             await event.answer(text, reply_markup=get_cart_inline_keyboard(cart_items))
         else:
             await event.answer(text)
 
 
-# Добавление в корзину
 @dp.callback_query(F.data.startswith("add_"))
-async def add_to_cart_callback(callback: types.CallbackQuery):  # Переименовано
+async def add_to_cart_callback(callback: types.CallbackQuery):
     try:
         product_id = int(callback.data.split('_')[1])
-        # Вызываем функцию из БД
-        add_to_cart(callback.from_user.id, product_id)  # Теперь это работает, потому что обработчик называется иначе
+        add_to_cart(callback.from_user.id, product_id)
         await callback.answer("✅ Товар добавлен в корзину!")
     except Exception as e:
         print(f"Ошибка: {e}")
         await callback.answer("❌ Ошибка")
 
 
-# Очистка корзины - ИСПРАВЛЕНО
 @dp.callback_query(F.data == "clear_cart")
 async def clear_cart_handler(callback: types.CallbackQuery):
     try:
-        # Очищаем корзину
         clear_cart(callback.from_user.id)
-
-        # Текст для пустой корзины
         new_text = "🛒 Ваша корзина пуста"
 
-        # Проверяем тип сообщения
         if callback.message.text:
-            # Если это текстовое сообщение
             if callback.message.text != new_text:
                 await callback.message.edit_text(new_text)
             else:
                 await callback.answer("🗑 Корзина уже пуста")
         elif callback.message.caption:
-            # Если это сообщение с подписью (фото)
             if callback.message.caption != new_text:
                 await callback.message.edit_caption(caption=new_text)
-                # Убираем клавиатуру если она есть
                 if callback.message.reply_markup:
                     await callback.message.edit_reply_markup(reply_markup=None)
             else:
                 await callback.answer("🗑 Корзина уже пуста")
         else:
-            # Если это сообщение без текста (только фото)
             await callback.message.delete()
             await callback.message.answer(new_text)
 
         await callback.answer("🗑 Корзина очищена")
-
     except Exception as e:
         print(f"Ошибка в clear_cart_handler: {e}")
         await callback.answer("❌ Произошла ошибка")
 
 
-# Удаление из корзины - ИСПРАВЛЕНО
 @dp.callback_query(F.data.startswith("rem_"))
 async def remove_from_cart_callback(callback: types.CallbackQuery):
     try:
@@ -794,25 +707,20 @@ async def remove_from_cart_callback(callback: types.CallbackQuery):
             new_text = format_cart_text(cart_items)
             new_keyboard = get_cart_inline_keyboard(cart_items)
 
-            # Проверяем тип сообщения
             if callback.message.text:
-                # Текстовое сообщение
                 if callback.message.text != new_text or callback.message.reply_markup != new_keyboard:
                     await callback.message.edit_text(new_text, reply_markup=new_keyboard)
                 else:
                     await callback.answer("🗑 Товар удален")
             elif callback.message.caption:
-                # Сообщение с подписью (фото)
                 if callback.message.caption != new_text or callback.message.reply_markup != new_keyboard:
                     await callback.message.edit_caption(caption=new_text, reply_markup=new_keyboard)
                 else:
                     await callback.answer("🗑 Товар удален")
             else:
-                # Если необычный тип сообщения
                 await callback.message.delete()
                 await callback.message.answer(new_text, reply_markup=new_keyboard)
         else:
-            # Корзина пуста
             new_text = "🛒 Ваша корзина пуста"
             if callback.message.text:
                 if callback.message.text != new_text:
@@ -836,7 +744,6 @@ async def remove_from_cart_callback(callback: types.CallbackQuery):
         await callback.answer("❌ Ошибка")
 
 
-# Очистка корзины
 @dp.callback_query(F.data == "create_order")
 async def create_order_handler(callback: types.CallbackQuery):
     try:
@@ -872,7 +779,6 @@ async def create_order_handler(callback: types.CallbackQuery):
 
         new_text = f"✅ ЗАКАЗ #{order_id} ОФОРМЛЕН!\n\nСтатус можно отслеживать в разделе «Мои заказы»."
 
-        # Проверяем, изменилось ли сообщение
         if callback.message.text != new_text:
             await callback.message.edit_text(new_text)
         else:
@@ -884,7 +790,6 @@ async def create_order_handler(callback: types.CallbackQuery):
         await callback.answer("❌ Ошибка при оформлении")
 
 
-# Мои заказы
 @dp.message(F.text == "📦 Мои заказы")
 async def show_my_orders(message: types.Message):
     orders = get_user_orders(message.from_user.id)
@@ -908,7 +813,6 @@ async def show_my_orders(message: types.Message):
     await message.answer(text.strip())
 
 
-# О нас
 @dp.message(F.text == "ℹ️ О нас")
 async def about_us(message: types.Message):
     text = (
@@ -924,22 +828,18 @@ async def about_us(message: types.Message):
     await message.answer(text)
 
 
-# Выход из админки
 @dp.message(F.text == "🔙 Выход")
 async def exit_admin(message: types.Message):
     if message.from_user.id == ADMIN_ID:
         await message.answer("👋 Выход", reply_markup=get_main_keyboard())
 
 
-# Админка: просмотр товаров
-# Админка: просмотр товаров
 @dp.message(F.text == "📦 Товары")
 async def admin_products(message: types.Message):
     if message.from_user.id != ADMIN_ID:
         return
 
     categories = get_all_categories()
-    from aiogram.utils.keyboard import InlineKeyboardBuilder
     builder = InlineKeyboardBuilder()
 
     for category in categories:
@@ -991,17 +891,15 @@ async def admin_category_products(callback: types.CallbackQuery):
 
         new_text = f"{emoji} {category_name} (стр. {page}/{total_pages}):"
 
-        # Проверяем, изменился ли текст
         if callback.message.text != new_text:
             await callback.message.edit_text(new_text)
 
-        # Всегда показываем товары (они отправляются новыми сообщениями, тут проверка не нужна)
         for product in products:
             product_text = (
                 f"📦 ID: {product[0]}\n"
                 f"Название: {product[1]}\n"
                 f"Описание: {product[2][:50]}..." if len(product[2]) > 50 else f"Описание: {product[2]}\n"
-                                                                               f"Цена: {product[3]}₽"
+                f"Цена: {product[3]}₽"
             )
 
             delete_keyboard = InlineKeyboardMarkup(inline_keyboard=[
@@ -1021,22 +919,16 @@ async def admin_category_products(callback: types.CallbackQuery):
                     reply_markup=delete_keyboard
                 )
 
-        # Навигация
         if total_pages > 1:
-            from aiogram.utils.keyboard import InlineKeyboardBuilder
             nav_builder = InlineKeyboardBuilder()
-
             if page > 1:
                 nav_builder.button(text="◀️", callback_data=f"adminview_{category_id}_{page - 1}")
             nav_builder.button(text=f"• {page}/{total_pages} •", callback_data="noop")
             if page < total_pages:
                 nav_builder.button(text="▶️", callback_data=f"adminview_{category_id}_{page + 1}")
-
             nav_builder.adjust(3)
             await callback.message.answer("Перейти на страницу:", reply_markup=nav_builder.as_markup())
 
-        # Кнопка возврата
-        from aiogram.utils.keyboard import InlineKeyboardBuilder
         back_builder = InlineKeyboardBuilder()
         back_builder.button(text="🔙 Назад к категориям", callback_data="back_admin_cats")
         await callback.message.answer("Управление:", reply_markup=back_builder.as_markup())
@@ -1076,8 +968,8 @@ async def delete_product_handler(callback: types.CallbackQuery):
         else:
             await callback.answer("❌ Товар не найден")
     except Exception as e:
-        print(f"Ошибка: {e}")
-        await callback.answer("Произошла ошибка")
+        print(f"Ошибка в delete_product_handler: {e}")
+        await callback.answer("❌ Произошла ошибка")
 
 
 # Добавление товара
@@ -1134,7 +1026,7 @@ async def add_product_category(callback: types.CallbackQuery, state: FSMContext)
         )
         await state.set_state(AdminStates.adding_product_name)
     except Exception as e:
-        print(f"Ошибка: {e}")
+        print(f"Ошибка в add_product_category: {e}")
         await callback.message.edit_text("❌ Ошибка при выборе категории")
         await state.clear()
     await callback.answer()
@@ -1311,19 +1203,37 @@ def add_initial_products():
             print("✅ Начальные товары добавлены")
 
 
-# Запуск бота
-async def main():
-    # Инициализация БД
-    init_db()
-    # Добавление начальных товаров
-    add_initial_products()
+# ============================================
+# === ЗАПУСК БОТА ===
+# ============================================
+async def start_bot_polling():
+    """Запускает поллинг бота в асинхронном режиме."""
+    try:
+        print("🚀 Бот начинает polling...")
+        # Инициализация БД перед запуском
+        init_db()
+        add_initial_products()
+        print(f"🤖 Бот запущен! Админ ID: {ADMIN_ID}")
+        print(f"📦 Товаров на странице: {ITEMS_PER_PAGE}")
+        print(f"💬 Чат для заказов: {ORDERS_CHAT_ID}")
+        await dp.start_polling(bot)
+    except Exception as e:
+        print(f"❌ Бот остановлен с ошибкой: {e}")
 
-    print(f"🤖 Бот запущен! Админ ID: {ADMIN_ID}")
-    print(f"📦 Товаров на странице: {ITEMS_PER_PAGE}")
-    print(f"💬 Чат для заказов: {ORDERS_CHAT_ID}")
+def run_bot():
+    """Запускает асинхронную функцию бота в отдельном потоке."""
+    asyncio.run(start_bot_polling())
 
-    # Запуск поллинга
-    await dp.start_polling(bot)
+# Запускаем бота в фоновом потоке
+bot_thread = threading.Thread(target=run_bot, daemon=True)
+bot_thread.start()
+print("✅ Бот запущен в фоновом потоке")
 
+# ============================================
+# === ВАЖНО: НИЧЕГО НЕ ЗАПУСКАЕМ ЗДЕСЬ ===
+# Gunicorn сам запустит Flask приложение через 'gunicorn cod:flask_app'
+# Не добавляйте flask_app.run() или другие запуски!
+# ============================================
 
-# В самом конце файла cod.py, после всех обработчиков
+print("🚀 Ожидание запросов от Gunicorn...")
+print("✅ Flask приложение готово к работе через Gunicorn")
