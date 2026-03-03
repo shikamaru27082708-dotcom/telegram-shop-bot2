@@ -1,0 +1,22 @@
+# Виртуальное окружение
+.venv/
+venv/
+env/
+
+# База данных
+*.db
+*.db-journal
+
+# Файлы конфигурации
+.env
+*.log
+
+# Кэш Python
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# IDE
+.idea/
+.vscode/
+*.swp

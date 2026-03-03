@@ -1,0 +1,89 @@
+import telebot
+from telebot import types
+
+# Замените на ваш токен
+TOKEN = 'YOUR_BOT_TOKEN'
+bot = telebot.TeleBot(TOKEN)
+
+# Каталог товаров
+PRODUCTS = {
+    '1': {'name': 'Смартфон', 'price': 25000, 'desc': 'Современный смартфон с отличной камерой', 'photo': 'https://example.com/phone.jpg'},
+    '2': {'name': 'Ноутбук', 'price': 50000, 'desc': 'Мощный ноутбук для работы и игр', 'photo': 'https://example.com/laptop.jpg'},
+    '3': {'name': 'Наушники', 'price': 3000, 'desc': 'Беспроводные наушники с шумоподавлением', 'photo': 'https://example.com/headphones.jpg'},
+    '4': {'name': 'Умные часы', 'price': 8000, 'desc': 'Фитнес‑трекер с мониторингом здоровья', 'photo': 'https://example.com/watch.jpg'}
+}
+
+# Корзина пользователя (в реальной реализации используйте БД)
+user_cart = {}
+
+def get_main_menu():
+    """Главное меню"""
+    markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+    btn1 = types.KeyboardButton("📦 Каталог товаров")
+    btn2 = types.KeyboardButton("🛒 Корзина")
+    btn3 = types.KeyboardButton("📞 Контакты")
+    markup.add(btn1, btn2, btn3)
+    return markup
+
+def get_products_keyboard():
+    """Клавиатура с товарами"""
+    markup = types.InlineKeyboardMarkup()
+    for product_id, product in PRODUCTS.items():
+        markup.add(types.InlineKeyboardButton(
+            f"{product['name']} - {product['price']} руб.",
+            callback_data=f"product_{product_id}"
+        ))
+    markup.add(types.InlineKeyboardButton("⬅️ Назад", callback_data="back_to_main"))
+    return markup
+
+def get_product_keyboard(product_id):
+    """Клавиатура для товара (добавить в корзину / назад)"""
+    markup = types.InlineKeyboardMarkup()
+    markup.add(
+        types.InlineKeyboardButton("➕ Добавить в корзину", callback_data=f"add_{product_id}"),
+        types.InlineKeyboardButton("⬅️ Назад к каталогу", callback_data="show_products")
+    )
+    return markup
+
+def get_cart_keyboard():
+    """Клавиатура корзины"""
+    markup = types.InlineKeyboardMarkup()
+    markup.add(
+        types.InlineKeyboardButton("🔄 Очистить корзину", callback_data="clear_cart"),
+        types.InlineKeyboardButton("✅ Оформить заказ", callback_data="checkout"),
+        types.InlineKeyboardButton("⬅️ Назад", callback_data="back_to_main")
+    )
+    return markup
+
+@bot.message_handler(commands=['start'])
+def start(message):
+    welcome_text = (
+        "Добро пожаловать в наш интернет‑магазин!\n\n"
+        "Здесь вы можете:\n"
+        "• Просмотреть каталог товаров\n"
+        "• Добавить товары в корзину\n"
+        "• Оформить заказ\n\n"
+        "Выберите действие:"
+    )
+    bot.send_message(message.chat.id, welcome_text, reply_markup=get_main_menu())
+
+@bot.message_handler(func=lambda message: message.text == "📦 Каталог товаров")
+def show_products(message):
+    bot.send_message(
+        message.chat.id,
+        "Доступные товары:",
+        reply_markup=get_products_keyboard()
+    )
+
+@bot.message_handler(func=lambda message: message.text == "🛒 Корзина")
+def show_cart(message):
+    user_id = message.from_user.id
+    cart = user_cart.get(user_id, {})
+
+    if not cart:
+        bot.send_message(message.chat.id, "Ваша корзина пуста 😞")
+        return
+
+    total = 0
+    cart_text = "🛒 Ваша корзина:\n\n"
+

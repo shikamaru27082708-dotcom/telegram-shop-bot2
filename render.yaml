@@ -1,0 +1,13 @@
+services:
+  - type: web
+    name: telegram-shop-bot
+    runtime: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: python main.py
+    envVars:
+      - key: BOT_TOKEN
+        sync: false
+      - key: ADMIN_ID
+        sync: false
+      - key: ORDERS_CHAT_ID
+        sync: false
