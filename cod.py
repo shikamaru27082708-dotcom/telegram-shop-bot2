@@ -1344,12 +1344,6 @@ async def on_startup(app: web.Application):
     )
     print(f"✅ Вебхук установлен на {webhook_url}")
 
-# Функция при завершении
-async def on_shutdown(app: web.Application):
-    print("🔄 Завершение работы...")
-    await bot.delete_webhook()
-    await bot.session.close()
-
 # Создаем aiohttp приложение
 app = web.Application()
 
@@ -1371,9 +1365,8 @@ webhook_requests_handler = SimpleRequestHandler(
 )
 webhook_requests_handler.register(app, path="/webhook")
 
-# Настраиваем startup/shutdown
+# Настраиваем startup (убираем on_shutdown)
 app.on_startup.append(on_startup)
-app.on_shutdown.append(on_shutdown)
 
 # Инициализируем базу данных
 init_db()
@@ -1385,18 +1378,3 @@ if __name__ == "__main__":
     port = int(os.environ.get('PORT', 10000))
     print(f"🚀 Запуск aiohttp сервера на порту {port}...")
     web.run_app(app, host='0.0.0.0', port=port)
-
-# ============================================
-# === FLASK ПРИЛОЖЕНИЕ (оставляем для health check) ===
-# ============================================
-# ... (ваш существующий код Flask) ...
-
-# ============================================
-# === FLASK ПРИЛОЖЕНИЕ (оставляем для health check) ===
-# ============================================
-# ... (ваш существующий код Flask) ...
-
-# ============================================
-# === FLASK ЗАПУСКАЕТСЯ GUNICORN ===
-# ============================================
-print("✅ Конфигурация загружена успешно!")
