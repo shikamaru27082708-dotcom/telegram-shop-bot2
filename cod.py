@@ -1014,8 +1014,15 @@ async def back_to_categories(callback: types.CallbackQuery):
 async def noop(callback: types.CallbackQuery):
     await callback.answer()
 
+
 # === ЗАПУСК БОТА ЧЕРЕЗ ВЕБХУКИ ===
 async def on_startup(app: web.Application):
+    print("🚀 Инициализация базы данных...")
+    await init_db_pool()
+    await create_tables()
+    await add_initial_products_async()
+    print("✅ База данных инициализирована")
+
     print("🚀 Устанавливаем вебхук...")
     await bot.delete_webhook()
     webhook_url = f"https://telegram-shop-bot2.onrender.com/webhook"
@@ -1026,8 +1033,17 @@ async def on_startup(app: web.Application):
     )
     print(f"✅ Вебхук установлен на {webhook_url}")
 
+
+async def on_shutdown(app: web.Application):
+    print("🔄 Завершение работы...")
+    await close_db_pool()
+    await bot.session.close()
+    print("✅ Ресурсы освобождены")
+
+
 # Создаём aiohttp приложение
 app = web.Application()
+
 
 async def handle_root(request):
     return web.json_response({
@@ -1036,6 +1052,7 @@ async def handle_root(request):
         "message": "Бот работает"
     })
 
+
 app.router.add_get('/', handle_root)
 app.router.add_get('/health', handle_root)
 
@@ -1043,18 +1060,9 @@ webhook_requests_handler = SimpleRequestHandler(dispatcher=dp, bot=bot)
 webhook_requests_handler.register(app, path="/webhook")
 
 app.on_startup.append(on_startup)
-
-# Точка входа
-async def main():
-    await init_db_pool()
-    await create_tables()
-    await add_initial_products_async()
-    port = int(os.environ.get('PORT', 10000))
-    print(f"🚀 Запуск aiohttp сервера на порту {port}...")
-    await web.run_app(app, host='0.0.0.0', port=port)
+app.on_shutdown.append(on_shutdown)
 
 if __name__ == "__main__":
-    try:
-        asyncio.run(main())
-    finally:
-        asyncio.run(close_db_pool())
+    port = int(os.environ.get('PORT', 10000))
+    print(f"🚀 Запуск aiohttp сервера на порту {port}...")
+    web.run_app(app, host='0.0.0.0', port=port)
