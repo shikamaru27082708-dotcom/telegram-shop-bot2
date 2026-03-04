@@ -178,13 +178,24 @@ async def get_products_by_category(category_id: int, page: int = 1) -> Tuple[Lis
         return [tuple(row) for row in rows], total
 
 async def get_product(product_id: int) -> Optional[Tuple]:
-    async with db_pool.acquire() as conn:
-        row = await conn.fetchrow('''
-            SELECT id, name, description, price, image_id, category_id, created_at
-            FROM products
-            WHERE id = $1 AND is_available = 1
-        ''', product_id)
-        return tuple(row) if row else None
+    print(f"🔍 get_product вызван с product_id={product_id}")
+    try:
+        async with db_pool.acquire() as conn:
+            row = await conn.fetchrow('''
+                SELECT id, name, description, price, image_id, category_id, created_at
+                FROM products
+                WHERE id = $1 AND is_available = 1
+            ''', product_id)
+            if row:
+                result = tuple(row)
+                print(f"✅ get_product нашёл товар: {result}")
+                return result
+            else:
+                print(f"❌ get_product не нашёл товар с id={product_id}")
+                return None
+    except Exception as e:
+        print(f"❌ Ошибка в get_product: {e}")
+        return None
 
 async def add_product(name: str, description: str, price: float, image_id: str, category_id: int) -> int:
     async with db_pool.acquire() as conn:
@@ -796,10 +807,13 @@ async def edit_price_start(callback: types.CallbackQuery, state: FSMContext):
         return
     try:
         product_id = int(callback.data.split('_')[1])
+        print(f"🔍 edit_price_start: product_id={product_id}")
         product = await get_product(product_id)
         if not product:
-            await callback.answer("❌ Товар не найден")
+            print(f"❌ edit_price_start: товар {product_id} не найден")
+            await callback.answer("❌ Товар не найден", show_alert=True)
             return
+        print(f"✅ edit_price_start: получен товар: {product}")
         await state.update_data(product_id=product_id)
         await state.set_state(AdminStates.editing_product_price)
         await callback.message.answer(
@@ -807,8 +821,8 @@ async def edit_price_start(callback: types.CallbackQuery, state: FSMContext):
         )
         await callback.answer()
     except Exception as e:
-        print(f"Ошибка в edit_price_start: {e}")
-        await callback.answer("❌ Произошла ошибка")
+        print(f"❌ Ошибка в edit_price_start: {e}")
+        await callback.answer("❌ Произошла ошибка", show_alert=True)
 
 @dp.message(AdminStates.editing_product_price)
 async def edit_price_process(message: types.Message, state: FSMContext):
@@ -935,18 +949,21 @@ async def delete_product_handler(callback: types.CallbackQuery):
         return
     try:
         product_id = int(callback.data.split('_')[1])
+        print(f"🔍 delete_product_handler: product_id={product_id}")
         product = await get_product(product_id)
-        if product:
-            await delete_product(product_id)
-            await callback.message.edit_text(
-                f"❌ Товар удален\n\nID: {product_id}\nНазвание: {product[1]}"
-            )
-            await callback.answer("✅ Товар удален")
-        else:
-            await callback.answer("❌ Товар не найден")
+        if not product:
+            print(f"❌ delete_product_handler: товар {product_id} не найден")
+            await callback.answer("❌ Товар не найден", show_alert=True)
+            return
+        print(f"✅ delete_product_handler: товар найден, удаляем")
+        await delete_product(product_id)
+        await callback.message.edit_text(
+            f"❌ Товар удален\n\nID: {product_id}\nНазвание: {product[1]}"
+        )
+        await callback.answer("✅ Товар удален")
     except Exception as e:
-        print(f"Ошибка в delete_product_handler: {e}")
-        await callback.answer("❌ Произошла ошибка")
+        print(f"❌ Ошибка в delete_product_handler: {e}")
+        await callback.answer("❌ Произошла ошибка", show_alert=True)
 
 @dp.message(F.text == "➕ Добавить товар")
 async def add_product_start(message: types.Message, state: FSMContext):
