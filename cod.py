@@ -1243,7 +1243,12 @@ async def noop(callback: types.CallbackQuery):
 
 
 # Добавление начальных товаров (если база пуста)
-def add_initial_products():
+def add_initial_products(force=False):
+    """
+    Добавляет начальные товары только если force=True или база пуста
+    force=False - добавляет только если нет товаров
+    force=True - принудительно добавляет (перезаписывает)
+    """
     with sqlite3.connect('shop.db') as conn:
         cursor = conn.cursor()
 
@@ -1251,7 +1256,11 @@ def add_initial_products():
         cursor.execute("SELECT COUNT(*) FROM products WHERE is_available = 1")
         count = cursor.fetchone()[0]
 
-        if count == 0:
+        # Добавляем только если force=True или товаров нет
+        if force or count == 0:
+            if force and count > 0:
+                print("⚠️ Принудительное добавление начальных товаров (существующие будут сохранены)")
+
             # Получаем ID категорий
             cursor.execute("SELECT id, name FROM categories")
             categories = {name: id for id, name in cursor.fetchall()}
@@ -1313,8 +1322,12 @@ def add_initial_products():
                     )
 
             conn.commit()
-            print("✅ Начальные товары добавлены")
-
+            if force:
+                print("✅ Начальные товары добавлены (принудительно)")
+            else:
+                print("✅ Начальные товары добавлены")
+        else:
+            print("ℹ️ Товары уже существуют, пропускаем инициализацию")
 
 # ============================================
 # === ЗАПУСК БОТА ===
