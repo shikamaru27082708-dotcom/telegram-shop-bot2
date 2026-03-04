@@ -555,16 +555,15 @@ def format_cart_text(cart_items: List[Tuple]) -> str:
 
 @dp.message(Command("start"))
 async def start_command(message: types.Message):
-    if message.from_user.id == ADMIN_ID:
-        await message.answer(
-            "👋 Добро пожаловать в админ-панель!",
-            reply_markup=get_admin_keyboard()
-        )
-    else:
-        await message.answer(
-            "👋 Добро пожаловать в магазин!",
-            reply_markup=get_main_keyboard()
-        )
+    print(f"🔥🔥🔥 ПОЛУЧЕНА КОМАНДА START от user {message.from_user.id} 🔥🔥🔥")
+    try:
+        # Пробуем отправить простое текстовое сообщение
+        await message.answer("✅ Бот работает! Команда /start получена.")
+        print("✅ Сообщение успешно отправлено")
+    except Exception as e:
+        print(f"❌❌❌ ОШИБКА при отправке: {e}")
+        import traceback
+        traceback.print_exc()
 
 
 @dp.message(F.text == "🛍 Каталог")
