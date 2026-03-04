@@ -12,9 +12,11 @@ env/
 # База данных
 *.db
 *.db-journal
+shop.db
 
 # Файлы конфигурации
 .env
+.env.local
 *.log
 
 # Кэш Python

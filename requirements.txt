@@ -3,3 +3,4 @@ aiohttp==3.10.10
 python-dotenv==1.0.1
 Flask==3.0.3
 cachetools==5.5.0
+asyncpg==0.29.0
