@@ -939,7 +939,10 @@ async def back_to_admin_categories(callback: types.CallbackQuery):
     if callback.from_user.id != ADMIN_ID:
         await callback.answer("⛔ У вас нет прав")
         return
-    await callback.message.delete()
+    try:
+        await callback.message.delete()
+    except Exception:
+        pass  # сообщение уже могло быть удалено
     await admin_products(callback.message)
     await callback.answer()
 
@@ -950,18 +953,18 @@ async def delete_product_handler(callback: types.CallbackQuery):
         return
     try:
         product_id = int(callback.data.split('_')[1])
-        print(f"🔍 delete_product_handler: product_id={product_id}")
         product = await get_product(product_id)
-        if not product:
-            print(f"❌ delete_product_handler: товар {product_id} не найден")
+        if product:
+            await delete_product(product_id)
+            # Удаляем исходное сообщение (с фото или без)
+            await callback.message.delete()
+            # Отправляем новое сообщение о результате
+            await callback.message.answer(
+                f"❌ Товар удален\n\nID: {product_id}\nНазвание: {product[1]}"
+            )
+            await callback.answer("✅ Товар удален")
+        else:
             await callback.answer("❌ Товар не найден", show_alert=True)
-            return
-        print(f"✅ delete_product_handler: товар найден, удаляем")
-        await delete_product(product_id)
-        await callback.message.edit_text(
-            f"❌ Товар удален\n\nID: {product_id}\nНазвание: {product[1]}"
-        )
-        await callback.answer("✅ Товар удален")
     except Exception as e:
         print(f"❌ Ошибка в delete_product_handler: {e}")
         await callback.answer("❌ Произошла ошибка", show_alert=True)
