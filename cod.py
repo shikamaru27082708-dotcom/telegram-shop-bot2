@@ -1065,7 +1065,12 @@ async def back_to_categories(callback: types.CallbackQuery):
 @dp.callback_query(F.data == "noop")
 async def noop(callback: types.CallbackQuery):
     await callback.answer()
-
+# ВРЕМЕННЫЙ УНИВЕРСАЛЬНЫЙ ЛОГГЕР ВСЕХ CALLBACK-ЗАПРОСОВ
+@dp.callback_query()
+async def debug_all_callbacks(callback: types.CallbackQuery):
+    print(f"🔍 ПОЛУЧЕН CALLBACK: data = '{callback.data}'")
+    # Не отвечаем, чтобы не мешать другим хендлерам
+    # await callback.answer()
 
 # === ЗАПУСК БОТА ЧЕРЕЗ ВЕБХУКИ ===
 async def on_startup(app: web.Application):
