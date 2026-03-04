@@ -550,37 +550,57 @@ async def process_product(callback: types.CallbackQuery):
 @dp.message(F.text == "🛒 Корзина")
 @dp.callback_query(F.data == "show_cart")
 async def show_cart(event: types.Message | types.CallbackQuery):
+    # Отладка
+    print(f"🔥 show_cart вызван, тип event: {type(event)}")
     user_id = event.from_user.id
-    cart_items = await get_cart(user_id)
-    text = "🛒 Ваша корзина пуста" if not cart_items else format_cart_text(cart_items)
-    if isinstance(event, types.CallbackQuery):
-        if cart_items:
-            new_keyboard = get_cart_inline_keyboard(cart_items)
-            if event.message.text != text or event.message.reply_markup != new_keyboard:
-                await event.message.edit_text(text, reply_markup=new_keyboard)
+    try:
+        cart_items = await get_cart(user_id)
+        print(f"✅ get_cart вернул {len(cart_items)} элементов")
+        text = "🛒 Ваша корзина пуста" if not cart_items else format_cart_text(cart_items)
+
+        if isinstance(event, types.CallbackQuery):
+            # Обрабатываем callback
+            if cart_items:
+                new_keyboard = get_cart_inline_keyboard(cart_items)
+                if event.message.text != text or event.message.reply_markup != new_keyboard:
+                    await event.message.edit_text(text, reply_markup=new_keyboard)
+                else:
+                    await event.answer()
             else:
-                await event.answer()
+                if event.message.text != text:
+                    await event.message.edit_text(text)
+                else:
+                    await event.answer()
+            await event.answer()
         else:
-            if event.message.text != text:
-                await event.message.edit_text(text)
+            # Обрабатываем обычное сообщение
+            if cart_items:
+                await event.answer(text, reply_markup=get_cart_inline_keyboard(cart_items))
             else:
-                await event.answer()
-        await event.answer()
-    else:
-        if cart_items:
-            await event.answer(text, reply_markup=get_cart_inline_keyboard(cart_items))
+                await event.answer(text)
+        print(f"✅ show_cart успешно завершён для user {user_id}")
+    except Exception as e:
+        print(f"❌ Ошибка в show_cart: {e}")
+        if isinstance(event, types.CallbackQuery):
+            await event.answer("❌ Не удалось загрузить корзину", show_alert=True)
         else:
-            await event.answer(text)
+            await event.answer("❌ Произошла ошибка. Попробуйте позже.")
 
 @dp.callback_query(F.data.startswith("add_"))
 async def add_to_cart_callback(callback: types.CallbackQuery):
+    print(f"🔥 add_to_cart_callback вызван с data={callback.data}")
     try:
         product_id = int(callback.data.split('_')[1])
+        print(f"📦 product_id = {product_id}")
         await add_to_cart(callback.from_user.id, product_id)
+        print(f"✅ Товар {product_id} добавлен в корзину пользователя {callback.from_user.id}")
         await callback.answer("✅ Товар добавлен в корзину!")
+    except ValueError as e:
+        print(f"❌ Ошибка преобразования product_id: {e}")
+        await callback.answer("❌ Некорректный ID товара", show_alert=True)
     except Exception as e:
-        print(f"Ошибка в add_to_cart_callback: {e}")
-        await callback.answer("❌ Ошибка")
+        print(f"❌ Ошибка в add_to_cart_callback: {e}")
+        await callback.answer("❌ Не удалось добавить товар", show_alert=True)
 
 @dp.callback_query(F.data == "clear_cart")
 async def clear_cart_handler(callback: types.CallbackQuery):
@@ -653,18 +673,28 @@ async def remove_from_cart_callback(callback: types.CallbackQuery):
 
 @dp.callback_query(F.data == "create_order")
 async def create_order_handler(callback: types.CallbackQuery):
+    print(f"🔥 create_order_handler вызван, user_id: {callback.from_user.id}")
     try:
         user_id = callback.from_user.id
         cart_items = await get_cart(user_id)
+        print(f"✅ get_cart вернул {len(cart_items)} элементов")
+
         if not cart_items:
-            await callback.answer("🛒 Корзина пуста")
+            await callback.answer("🛒 Корзина пуста", show_alert=True)
             return
+
         user = callback.from_user
         username = f"@{user.username}" if user.username else f"ID: {user.id}"
-        order_id = await create_order(user_id, user.full_name, username, cart_items)
-        await clear_cart(user_id)
 
-        text = f"🆕 НОВЫЙ ЗАКАЗ #{order_id}\n\n👤 {user.full_name}\n🔗 {username}\n📅 {datetime.now().strftime('%d.%m.%Y %H:%M')}\n\n📦 Состав:\n"
+        order_id = await create_order(user_id, user.full_name, username, cart_items)
+        print(f"✅ create_order создал заказ #{order_id}")
+        await clear_cart(user_id)
+        print(f"✅ Корзина очищена")
+
+        # Формируем уведомление админу
+        text = f"🆕 НОВЫЙ ЗАКАЗ #{order_id}\n\n"
+        text += f"👤 {user.full_name}\n🔗 {username}\n"
+        text += f"📅 {datetime.now().strftime('%d.%m.%Y %H:%M')}\n\n📦 Состав:\n"
         total = 0
         for item in cart_items:
             text += f"• {item[3][:30]} x{item[1]} = {item[1] * item[4]}₽\n"
@@ -673,31 +703,53 @@ async def create_order_handler(callback: types.CallbackQuery):
 
         try:
             await bot.send_message(ORDERS_CHAT_ID, text)
-        except:
+            print(f"✅ Уведомление отправлено в чат {ORDERS_CHAT_ID}")
+        except Exception as e:
+            print(f"⚠️ Не удалось отправить уведомление в ORDERS_CHAT_ID: {e}")
             await bot.send_message(ADMIN_ID, text)
+            print(f"✅ Уведомление отправлено админу {ADMIN_ID}")
 
         new_text = f"✅ ЗАКАЗ #{order_id} ОФОРМЛЕН!\n\nСтатус можно отслеживать в разделе «Мои заказы»."
+
         if callback.message.text != new_text:
             await callback.message.edit_text(new_text)
         else:
             await callback.answer("✅ Заказ оформлен!")
+
         await callback.answer("✅ Заказ оформлен!")
+        print(f"✅ Заказ #{order_id} успешно оформлен")
     except Exception as e:
-        print(f"Ошибка в create_order_handler: {e}")
-        await callback.answer("❌ Ошибка при оформлении")
+        print(f"❌ Ошибка в create_order_handler: {e}")
+        await callback.answer("❌ Ошибка при оформлении заказа", show_alert=True)
 
 @dp.message(F.text == "📦 Мои заказы")
 async def show_my_orders(message: types.Message):
-    orders = await get_user_orders(message.from_user.id)
-    if not orders:
-        await message.answer("📭 У вас пока нет заказов")
-        return
-    status_map = {'new': '🆕 Новый', 'processing': '⏳ В обработке', 'completed': '✅ Выполнен', 'cancelled': '❌ Отменен'}
-    text = "📦 Ваши заказы:\n\n"
-    for order in orders:
-        text += f"#{order[0]} {status_map.get(order[5], order[5])}\n"
-        text += f"💰 {order[4]}₽ • {order[6][:16]}\n\n"
-    await message.answer(text.strip())
+    print(f"🔥 show_my_orders вызван, user_id: {message.from_user.id}")
+    try:
+        orders = await get_user_orders(message.from_user.id)
+        print(f"✅ get_user_orders вернул {len(orders)} заказов")
+
+        if not orders:
+            await message.answer("📭 У вас пока нет заказов")
+            return
+
+        status_map = {
+            'new': '🆕 Новый',
+            'processing': '⏳ В обработке',
+            'completed': '✅ Выполнен',
+            'cancelled': '❌ Отменен'
+        }
+
+        text = "📦 Ваши заказы:\n\n"
+        for order in orders:
+            text += f"#{order[0]} {status_map.get(order[5], order[5])}\n"
+            text += f"💰 {order[4]}₽ • {order[6][:16]}\n\n"
+
+        await message.answer(text.strip())
+        print(f"✅ show_my_orders успешно завершён")
+    except Exception as e:
+        print(f"❌ Ошибка в show_my_orders: {e}")
+        await message.answer("❌ Не удалось загрузить заказы. Попробуйте позже.")
 
 @dp.message(F.text == "ℹ️ О нас")
 async def about_us(message: types.Message):
