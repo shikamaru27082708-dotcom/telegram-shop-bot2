@@ -94,8 +94,8 @@ async def create_tables():
         # Таблица заказов
         await conn.execute('''
             CREATE TABLE IF NOT EXISTS orders (
-                id SERIAL PRIMARY KEY,
-                user_id INTEGER NOT NULL,
+             id SERIAL PRIMARY KEY,
+             user_id BIGINT NOT NULL,
                 user_name TEXT,
                 username TEXT,
                 total_amount REAL,
@@ -124,7 +124,7 @@ async def create_tables():
         await conn.execute('''
             CREATE TABLE IF NOT EXISTS cart (
                 id SERIAL PRIMARY KEY,
-                user_id INTEGER NOT NULL,
+                user_id BIGINT NOT NULL,
                 product_id INTEGER REFERENCES products(id) ON DELETE CASCADE,
                 quantity INTEGER DEFAULT 1,
                 added_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
