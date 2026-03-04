@@ -742,8 +742,10 @@ async def show_my_orders(message: types.Message):
 
         text = "📦 Ваши заказы:\n\n"
         for order in orders:
+            # order[0]: id, order[4]: total_amount, order[5]: status, order[6]: created_at (datetime)
+            created_at_str = order[6].strftime('%d.%m.%Y %H:%M') if order[6] else ''
             text += f"#{order[0]} {status_map.get(order[5], order[5])}\n"
-            text += f"💰 {order[4]}₽ • {order[6][:16]}\n\n"
+            text += f"💰 {order[4]}₽ • {created_at_str}\n\n"
 
         await message.answer(text.strip())
         print(f"✅ show_my_orders успешно завершён")
@@ -1030,16 +1032,24 @@ async def add_product_image(message: types.Message, state: FSMContext):
 async def admin_orders(message: types.Message):
     if message.from_user.id != ADMIN_ID:
         return
-    orders = await get_all_orders(20)
-    if not orders:
-        await message.answer("📭 Нет заказов")
-        return
-    status_map = {'new': '🆕', 'processing': '⏳', 'completed': '✅', 'cancelled': '❌'}
-    text = "📋 Последние заказы:\n\n"
-    for order in orders:
-        text += f"{status_map.get(order[5], '•')} #{order[0]} {order[2][:15]}\n"
-        text += f"💰 {order[4]}₽ • {order[6][:16]}\n\n"
-    await message.answer(text.strip())
+    try:
+        orders = await get_all_orders(20)
+        if not orders:
+            await message.answer("📭 Нет заказов")
+            return
+
+        status_map = {'new': '🆕', 'processing': '⏳', 'completed': '✅', 'cancelled': '❌'}
+        text = "📋 Последние заказы:\n\n"
+
+        for order in orders:
+            created_at_str = order[6].strftime('%d.%m.%Y %H:%M') if order[6] else ''
+            text += f"{status_map.get(order[5], '•')} #{order[0]} {order[2][:15]}\n"
+            text += f"💰 {order[4]}₽ • {created_at_str}\n\n"
+
+        await message.answer(text.strip())
+    except Exception as e:
+        print(f"❌ Ошибка в admin_orders: {e}")
+        await message.answer("❌ Ошибка при загрузке заказов")
 
 @dp.message(F.text == "📊 Статистика")
 async def admin_stats(message: types.Message):
