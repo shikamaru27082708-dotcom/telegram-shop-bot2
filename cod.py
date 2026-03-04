@@ -101,6 +101,8 @@ class AdminStates(StatesGroup):
     adding_product_price = State()
     adding_product_image = State()
     adding_product_category = State()
+    # Новое состояние для изменения цены
+    editing_product_price = State()
 
 
 # Кэширующий декоратор
@@ -280,7 +282,19 @@ def add_product(name: str, description: str, price: float, image_id: str, catego
     invalidate_cache("products")
     invalidate_cache("categories")
     return product_id
-
+def update_product_price(product_id: int, new_price: float) -> bool:
+    """Обновляет цену товара"""
+    with sqlite3.connect('shop.db') as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            "UPDATE products SET price = ? WHERE id = ? AND is_available = 1",
+            (new_price, product_id)
+        )
+        conn.commit()
+        success = cursor.rowcount > 0
+    if success:
+        invalidate_cache("products")
+    return success
 
 def delete_product(product_id: int):
     with sqlite3.connect('shop.db') as conn:
@@ -857,6 +871,99 @@ async def admin_products(message: types.Message):
     )
 
 
+@dp.callback_query(F.data.startswith("editprice_"))
+async def edit_price_start(callback: types.CallbackQuery, state: FSMContext):
+    """Начало процесса изменения цены"""
+    if callback.from_user.id != ADMIN_ID:
+        await callback.answer("⛔ У вас нет прав")
+        return
+
+    try:
+        product_id = int(callback.data.split('_')[1])
+        product = get_product(product_id)
+
+        if not product:
+            await callback.answer("❌ Товар не найден")
+            return
+
+        # Сохраняем ID товара в состояние
+        await state.update_data(product_id=product_id)
+        await state.set_state(AdminStates.editing_product_price)
+
+        await callback.message.answer(
+            f"✏️ Изменение цены для товара:\n"
+            f"📦 {product[1]}\n"
+            f"💰 Текущая цена: {product[3]}₽\n\n"
+            f"Введите новую цену (только число):"
+        )
+        await callback.answer()
+    except Exception as e:
+        print(f"Ошибка в edit_price_start: {e}")
+        await callback.answer("❌ Произошла ошибка")
+
+
+@dp.message(AdminStates.editing_product_price)
+async def edit_price_process(message: types.Message, state: FSMContext):
+    """Обработка ввода новой цены"""
+    if message.from_user.id != ADMIN_ID:
+        await state.clear()
+        return
+
+    try:
+        # Пробуем преобразовать ввод в число
+        new_price = float(message.text.replace(',', '.'))
+
+        if new_price <= 0:
+            await message.answer("❌ Цена должна быть положительным числом. Попробуйте снова:")
+            return
+
+        if new_price > 1000000:
+            await message.answer("❌ Цена слишком высокая (максимум 1 000 000). Введите меньшую цену:")
+            return
+
+        # Получаем данные из состояния
+        data = await state.get_data()
+        product_id = data.get('product_id')
+
+        if not product_id:
+            await message.answer("❌ Ошибка: ID товара не найден")
+            await state.clear()
+            return
+
+        # Получаем информацию о товаре для подтверждения
+        product = get_product(product_id)
+
+        if not product:
+            await message.answer("❌ Товар не найден")
+            await state.clear()
+            return
+
+        # Обновляем цену
+        success = update_product_price(product_id, new_price)
+
+        if success:
+            await message.answer(
+                f"✅ Цена успешно изменена!\n\n"
+                f"📦 Товар: {product[1]}\n"
+                f"💰 Старая цена: {product[3]}₽\n"
+                f"💰 Новая цена: {new_price}₽"
+            )
+        else:
+            await message.answer("❌ Не удалось обновить цену")
+
+        await state.clear()
+
+    except ValueError:
+        await message.answer("❌ Пожалуйста, введите корректное число (например: 1000 или 499.90)")
+    except Exception as e:
+        print(f"Ошибка в edit_price_process: {e}")
+        await message.answer("❌ Произошла ошибка")
+        await state.clear()
+
+
+# Обновите функцию admin_category_products, заменив delete_keyboard на edit_keyboard
+# Вот полный обновленный участок функции admin_category_products:
+
 @dp.callback_query(F.data.startswith("adminview_"))
 async def admin_category_products(callback: types.CallbackQuery):
     if callback.from_user.id != ADMIN_ID:
@@ -901,11 +1008,15 @@ async def admin_category_products(callback: types.CallbackQuery):
                 f"📦 ID: {product[0]}\n"
                 f"Название: {product[1]}\n"
                 f"Описание: {product[2][:50]}..." if len(product[2]) > 50 else f"Описание: {product[2]}\n"
-                f"Цена: {product[3]}₽"
+                f"💰 Цена: {product[3]}₽"
             )
 
-            delete_keyboard = InlineKeyboardMarkup(inline_keyboard=[
-                [InlineKeyboardButton(text="❌ Удалить товар", callback_data=f"delprod_{product[0]}")]
+            # Обновленная клавиатура с кнопкой изменения цены
+            edit_keyboard = InlineKeyboardMarkup(inline_keyboard=[
+                [
+                    InlineKeyboardButton(text="✏️ Изменить цену", callback_data=f"editprice_{product[0]}"),
+                    InlineKeyboardButton(text="❌ Удалить", callback_data=f"delprod_{product[0]}")
+                ]
             ])
 
             if product[4]:
@@ -913,12 +1024,12 @@ async def admin_category_products(callback: types.CallbackQuery):
                     callback.from_user.id,
                     product[4],
                     caption=product_text,
-                    reply_markup=delete_keyboard
+                    reply_markup=edit_keyboard
                 )
             else:
                 await callback.message.answer(
                     product_text,
-                    reply_markup=delete_keyboard
+                    reply_markup=edit_keyboard
                 )
 
         if total_pages > 1:
