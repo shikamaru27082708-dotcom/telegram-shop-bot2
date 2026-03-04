@@ -67,22 +67,6 @@ CACHE_TTL = 300
 # Инициализация кэша
 cache = TTLCache(maxsize=100, ttl=CACHE_TTL)
 
-# === СОЗДАЕМ FLASK ПРИЛОЖЕНИЕ ===
-flask_app = Flask(__name__)
-
-@flask_app.route('/')
-def home():
-    return jsonify({
-        "status": "running",
-        "bot": "Telegram Shop Bot",
-        "message": "Бот работает"
-    })
-
-@flask_app.route('/health')
-def health():
-    return jsonify({"status": "healthy"}), 200
-# ================================
-
 # === СОЗДАЕМ БОТА И ДИСПЕТЧЕРА ===
 bot = Bot(token=BOT_TOKEN)
 storage = MemoryStorage()
@@ -1338,16 +1322,13 @@ def add_initial_products(force=False):
 # ============================================
 # === ЗАПУСК БОТА ЧЕРЕЗ ВЕБХУКИ (ДЛЯ RENDER) ===
 # ============================================
-import aiohttp
-from aiogram.webhook.aiohttp_server import SimpleRequestHandler, setup_application
 from aiohttp import web
-import os
+from aiogram.webhook.aiohttp_server import SimpleRequestHandler
 
 # Функция для установки вебхука при запуске
 async def on_startup(app: web.Application):
-    # Удаляем предыдущий вебхук, если был
+    print("🚀 Устанавливаем вебхук...")
     await bot.delete_webhook()
-    # Устанавливаем новый вебхук, указывая URL вашего сервиса на Render
     webhook_url = f"https://telegram-shop-bot2.onrender.com/webhook"
     await bot.set_webhook(
         url=webhook_url,
@@ -1358,7 +1339,7 @@ async def on_startup(app: web.Application):
 
 # Функция при завершении
 async def on_shutdown(app: web.Application):
-    print("🔄 Удаляем вебхук...")
+    print("🔄 Завершение работы...")
     await bot.delete_webhook()
     await bot.session.close()
 
@@ -1374,7 +1355,7 @@ async def handle_root(request):
     })
 
 app.router.add_get('/', handle_root)
-app.router.add_get('/health', handle_root)  # Тот же ответ для health check
+app.router.add_get('/health', handle_root)
 
 # Регистрируем обработчики вебхука
 webhook_requests_handler = SimpleRequestHandler(
@@ -1387,17 +1368,16 @@ webhook_requests_handler.register(app, path="/webhook")
 app.on_startup.append(on_startup)
 app.on_shutdown.append(on_shutdown)
 
-# Точка входа для Gunicorn
+# Инициализируем базу данных
+init_db()
+add_initial_products()
+print("✅ База данных инициализирована")
+
+# ТОЧКА ВХОДА - запускаем сервер
 if __name__ == "__main__":
-    # Этот блок не выполнится при запуске через Gunicorn
-    pass
-else:
-    # При запуске через Gunicorn просто создаем экземпляр app
-    # Инициализируем базу данных (один раз)
-    init_db()
-    add_initial_products()
-    print("✅ База данных инициализирована")
-    print("🚀 Бот готов к работе через вебхуки")
+    port = int(os.environ.get('PORT', 10000))
+    print(f"🚀 Запуск aiohttp сервера на порту {port}...")
+    web.run_app(app, host='0.0.0.0', port=port)
 
 # ============================================
 # === FLASK ПРИЛОЖЕНИЕ (оставляем для health check) ===
@@ -1412,26 +1392,4 @@ else:
 # ============================================
 # === FLASK ЗАПУСКАЕТСЯ GUNICORN ===
 # ============================================
-print("🚀 Flask приложение готово к работе через Gunicorn")
 print("✅ Конфигурация загружена успешно!")
-# ============================================
-# === ТОЧКА ВХОДА ДЛЯ ЗАПУСКА AioHTTP СЕРВЕРА ===
-# ============================================
-if __name__ == "__main__":
-    # Этот код выполняется только при прямом запуске: python cod.py
-    import os
-    from aiohttp import web
-
-    port = int(os.environ.get('PORT', 10000))
-    print(f"🚀 Запуск aiohttp сервера на порту {port}...")
-
-    # Инициализация БД (если нужно)
-    init_db()
-    add_initial_products()
-
-    # Запускаем приложение
-    web.run_app(app, host='0.0.0.0', port=port)
-else:
-    # Код в этой ветке выполняется при импорте (например, для Gunicorn, который нам больше не нужен)
-    # Мы оставим это для обратной совместимости, но Gunicorn мы больше использовать не будем.
-    pass
