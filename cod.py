@@ -802,6 +802,7 @@ async def admin_products(message: types.Message):
 
 @dp.callback_query(F.data.startswith("editprice_"))
 async def edit_price_start(callback: types.CallbackQuery, state: FSMContext):
+    print(f"🔥 edit_price_start: callback.data = {callback.data}")
     if callback.from_user.id != ADMIN_ID:
         await callback.answer("⛔ У вас нет прав")
         return
