@@ -1366,6 +1366,17 @@ async def on_shutdown(app: web.Application):
 # Создаем aiohttp приложение
 app = web.Application()
 
+# Добавляем корневой маршрут для проверки Render
+async def handle_root(request):
+    return web.json_response({
+        "status": "running",
+        "bot": "Telegram Shop Bot",
+        "message": "Бот работает"
+    })
+
+app.router.add_get('/', handle_root)
+app.router.add_get('/health', handle_root)  # Тот же ответ для health check
+
 # Регистрируем обработчики вебхука
 webhook_requests_handler = SimpleRequestHandler(
     dispatcher=dp,
